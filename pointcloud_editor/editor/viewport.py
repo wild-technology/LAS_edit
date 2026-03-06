@@ -62,8 +62,8 @@ class Viewport(QWidget):
         try:
             iren = self._plotter.interactor.GetRenderWindow().GetInteractor()
             iren.SetInteractorStyle(None)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not disable interaction: {e}")
 
     def add_layer(self, layer):
         """Add a layer to the viewport with quick preview, then build LOD."""
@@ -119,39 +119,13 @@ class Viewport(QWidget):
         self._mesh_actors[layer_id] = actor_name
 
     def update_layer_colors(self, layer_id: int):
-        """Re-apply color adjustments without rebuilding geometry."""
-        layer = self._find_layer(layer_id)
-        if not layer:
-            return
-        data = self._decimated_data.get(layer_id)
-        if not data:
-            self.update_layer(layer_id)
-            return
-
-        rgb = data["rgb_original"].copy()
-        adjusted = apply_color_adjustments(rgb, layer.color_adjustments)
-
-        # Apply selection highlight
-        if layer.selection_mask.any() and "indices" in data:
-            adjusted = self._apply_selection_highlight(
-                adjusted, layer.selection_mask, data.get("indices")
-            )
-
-        actor_name = self._mesh_actors.get(layer_id)
-        if actor_name:
-            try:
-                actor = self._plotter.renderer.GetActors()
-                # Update scalars on existing mesh
-                self._plotter.update_scalars(adjusted, mesh=actor_name, render=True)
-            except Exception:
-                self.update_layer(layer_id)
+        """Re-apply color adjustments by rebuilding the layer mesh."""
+        self.update_layer(layer_id)
 
     def set_layer_visibility(self, layer_id: int, visible: bool):
         """Show/hide a layer's actor."""
         actor_name = self._mesh_actors.get(layer_id)
         if actor_name:
-            actor = self._plotter.renderer.GetActors()
-            # Rebuild visibility by update
             layer = self._find_layer(layer_id)
             if layer:
                 if visible:
@@ -165,8 +139,8 @@ class Viewport(QWidget):
         for actor_name in list(self._mesh_actors.values()):
             try:
                 self._plotter.remove_actor(actor_name)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not remove actor {actor_name}: {e}")
         self._mesh_actors.clear()
         self._decimated_data.clear()
 
@@ -207,7 +181,8 @@ class Viewport(QWidget):
         """Return (width, height) of the viewport."""
         try:
             return tuple(self._plotter.window_size)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Could not get viewport size: {e}")
             return None
 
     def screen_to_world(self, screen_pos: QPoint) -> np.ndarray | None:
@@ -247,7 +222,8 @@ class Viewport(QWidget):
                 "focal_point": list(camera.focal_point),
                 "up": list(camera.up),
             }
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Could not get camera state: {e}")
             return {}
 
     def set_camera_state(self, state: dict):
@@ -343,10 +319,10 @@ class Viewport(QWidget):
         """Blend selected points toward cyan."""
         rgb = rgb.copy()
         if indices is not None:
-            # Map full selection mask to viewport indices
-            viewport_selection = selection_mask[indices] if indices is not None else selection_mask
+            viewport_selection = selection_mask[indices]
         else:
-            viewport_selection = selection_mask[:len(rgb)] if len(selection_mask) >= len(rgb) else np.zeros(len(rgb), dtype=bool)
+            # Mask may be longer than rgb when using LOD decimation
+            viewport_selection = selection_mask[:len(rgb)]
 
         if viewport_selection.any() and len(viewport_selection) == len(rgb):
             cyan = np.array([0, 255, 255], dtype=np.float32)

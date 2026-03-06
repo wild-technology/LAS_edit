@@ -75,8 +75,6 @@ class RotateTool(BaseTool):
         if self._selection_mode:
             R = build_rotation_matrix(angle_x, angle_y, angle_z, self._pivot)
             centered = self._original_positions - self._pivot
-            ones = np.ones((len(centered), 1), dtype=np.float32)
-            pts_h = np.hstack([centered, ones])
             rotated = (R[:3, :3] @ centered.T).T + self._pivot
             layer.xyz[layer.selection_mask] = rotated.astype(np.float32)
             self._viewport.update_layer(id(layer))

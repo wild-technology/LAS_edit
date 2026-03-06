@@ -25,7 +25,7 @@ def delete_selected(layer, undo_stack):
 def select_all(layer, undo_stack=None):
     """Select all non-deleted points."""
     old_mask = layer.selection_mask.copy()
-    new_mask = ~layer.deleted_mask.copy()
+    new_mask = ~layer.deleted_mask
     layer.selection_mask = new_mask
     layer.selection_changed.emit()
     if undo_stack and not np.array_equal(old_mask, new_mask):
