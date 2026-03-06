@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QMainWindow, QFileDialog, QMessageBox, QApplication,
-    QMenu, QDockWidget,
+    QMenu, QDockWidget, QSlider, QLabel, QWidgetAction, QHBoxLayout, QWidget,
 )
 from PySide6.QtGui import (
     QAction, QKeySequence, QUndoStack, QShortcut,
@@ -27,6 +27,7 @@ from pointcloud_editor.tools import selection_transform
 from pointcloud_editor.core.undo_stack import TransformCommand, ColorCommand
 from pointcloud_editor.core.settings import (
     get_recent_projects, add_recent_project, get_settings,
+    get_viewport_point_budget, set_viewport_point_budget,
 )
 from pointcloud_editor.las_color_adjust.logging_setup import setup_logger
 
@@ -191,6 +192,26 @@ class MainWindow(QMainWindow):
         fit_all_action = view_menu.addAction("&Fit All")
         fit_all_action.setShortcut(QKeySequence("F"))
         fit_all_action.triggered.connect(self._fit_view)
+
+        view_menu.addSeparator()
+
+        # Viewport point budget slider
+        budget_widget = QWidget()
+        budget_layout = QHBoxLayout(budget_widget)
+        budget_layout.setContentsMargins(8, 4, 8, 4)
+        budget_label = QLabel("Viewport budget:")
+        self._budget_slider = QSlider(Qt.Horizontal)
+        self._budget_slider.setRange(1, 50)  # 1M to 50M
+        current_budget = get_viewport_point_budget()
+        self._budget_slider.setValue(current_budget // 1_000_000)
+        self._budget_value_label = QLabel(f"{current_budget // 1_000_000}M pts")
+        self._budget_slider.valueChanged.connect(self._on_budget_changed)
+        budget_layout.addWidget(budget_label)
+        budget_layout.addWidget(self._budget_slider, stretch=1)
+        budget_layout.addWidget(self._budget_value_label)
+        budget_action = QWidgetAction(self)
+        budget_action.setDefaultWidget(budget_widget)
+        view_menu.addAction(budget_action)
 
         view_menu.addSeparator()
 
@@ -364,7 +385,7 @@ class MainWindow(QMainWindow):
     def _on_layer_visibility_changed(self, index: int, visible: bool):
         if 0 <= index < len(self._project.layers):
             layer = self._project.layers[index]
-            self._viewport.set_layer_visibility(id(layer), visible)
+            self._viewport.set_layer_visibility(layer.uid, visible)
             self._project.modified = True
         self._update_status()
 
@@ -376,7 +397,7 @@ class MainWindow(QMainWindow):
         if 0 <= self._active_layer_index < len(self._project.layers):
             layer = self._project.layers[self._active_layer_index]
             layer.visible = not layer.visible
-            self._viewport.set_layer_visibility(id(layer), layer.visible)
+            self._viewport.set_layer_visibility(layer.uid, layer.visible)
             self._layer_panel.update_counts()
 
     def _solo_active_layer(self):
@@ -390,7 +411,7 @@ class MainWindow(QMainWindow):
     def _on_properties_transform_changed(self):
         if 0 <= self._active_layer_index < len(self._project.layers):
             layer = self._project.layers[self._active_layer_index]
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
             self._project.modified = True
 
     # ---- Color Operations ----
@@ -415,7 +436,7 @@ class MainWindow(QMainWindow):
     def _on_properties_color_changed(self):
         if 0 <= self._active_layer_index < len(self._project.layers):
             layer = self._project.layers[self._active_layer_index]
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
             self._project.modified = True
 
     # ---- Selection Operations ----
@@ -424,28 +445,28 @@ class MainWindow(QMainWindow):
         layer = self._get_active_layer()
         if layer:
             selection_transform.select_all(layer, self._undo_stack)
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
             self._update_status()
 
     def _deselect_all(self):
         layer = self._get_active_layer()
         if layer:
             selection_transform.deselect_all(layer, self._undo_stack)
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
             self._update_status()
 
     def _invert_selection(self):
         layer = self._get_active_layer()
         if layer:
             selection_transform.invert_selection(layer, self._undo_stack)
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
             self._update_status()
 
     def _delete_selected(self):
         layer = self._get_active_layer()
         if layer and layer.selection_mask.any():
             selection_transform.delete_selected(layer, self._undo_stack)
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
             self._layer_panel.update_counts()
             self._update_status()
 
@@ -459,10 +480,18 @@ class MainWindow(QMainWindow):
         layer = self._get_active_layer()
         if layer:
             selection_transform.deselect_all(layer, self._undo_stack)
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
             self._update_status()
 
     # ---- View Operations ----
+
+    def _on_budget_changed(self, value: int):
+        budget = value * 1_000_000
+        self._budget_value_label.setText(f"{value}M pts")
+        set_viewport_point_budget(budget)
+        self._viewport._decimator.point_budget = budget
+        self._viewport.refresh_all()
+        self._update_status()
 
     def _fit_view(self):
         self._viewport.fit_all()

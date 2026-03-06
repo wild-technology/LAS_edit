@@ -13,6 +13,8 @@ logger = setup_logger(__name__)
 class PointCloudLayer(QObject):
     """Represents a single loaded point cloud with metadata."""
 
+    _next_uid = 1  # Class-level counter for stable, small integer IDs
+
     # Signals
     visibility_changed = Signal(bool)
     transform_changed = Signal()
@@ -22,6 +24,8 @@ class PointCloudLayer(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.uid: int = PointCloudLayer._next_uid
+        PointCloudLayer._next_uid += 1
 
         # Identity / source
         self.name: str = ""

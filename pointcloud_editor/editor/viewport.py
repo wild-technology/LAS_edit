@@ -67,7 +67,7 @@ class Viewport(QWidget):
 
     def add_layer(self, layer):
         """Add a layer to the viewport with quick preview, then build LOD."""
-        layer_id = id(layer)
+        layer_id = layer.uid
 
         # Quick preview via random subsample
         fraction = self._compute_fraction(layer)
@@ -151,7 +151,7 @@ class Viewport(QWidget):
 
     def fit_to_layer(self, layer):
         """Focus camera on a specific layer."""
-        layer_id = id(layer)
+        layer_id = layer.uid
         actor_name = self._mesh_actors.get(layer_id)
         if actor_name:
             self._plotter.reset_camera()
@@ -265,7 +265,7 @@ class Viewport(QWidget):
             rgb = rgb[mask]
 
         # Use LOD if available
-        layer_id = id(layer)
+        layer_id = layer.uid
         lod_data = self._decimator._lod_cache.get(layer_id) if self._decimator.has_lod(layer_id) else None
         if lod_data is not None:
             budget = max(1000, int(len(xyz) * fraction))
@@ -346,6 +346,6 @@ class Viewport(QWidget):
     def _find_layer(self, layer_id: int):
         """Find layer by id."""
         for layer in self._project.layers:
-            if id(layer) == layer_id:
+            if layer.uid == layer_id:
                 return layer
         return None

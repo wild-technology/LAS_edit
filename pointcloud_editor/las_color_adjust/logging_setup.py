@@ -15,4 +15,6 @@ def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
+        # Prevent child loggers from duplicating messages to parent handlers
+        logger.propagate = False
     return logger
