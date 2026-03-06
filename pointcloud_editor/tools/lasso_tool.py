@@ -83,15 +83,26 @@ class LassoTool(BaseTool):
             self._overlay.deleteLater()
             self._overlay = None
 
+    def _mapped_pos(self, event) -> QPoint:
+        """Get mouse position mapped to interactor widget coordinates.
+
+        Uses globalPosition → mapFromGlobal to avoid offset on Windows
+        where VTK's native child HWND may have a different origin.
+        """
+        widget = self._viewport.interactor_widget()
+        if hasattr(event, 'globalPosition'):
+            return widget.mapFromGlobal(event.globalPosition().toPoint())
+        return widget.mapFromGlobal(event.globalPos())
+
     def mouse_press(self, event):
         if event.button() != Qt.LeftButton:
             return
-        self._lasso_points = [event.pos()]
+        self._lasso_points = [self._mapped_pos(event)]
         self._drawing = True
 
     def mouse_move(self, event):
         if self._drawing:
-            self._lasso_points.append(event.pos())
+            self._lasso_points.append(self._mapped_pos(event))
             if self._overlay:
                 self._overlay.set_polygon(self._lasso_points)
                 self._overlay.update()
@@ -165,14 +176,17 @@ class LassoTool(BaseTool):
         else:
             new_mask = new_selection
 
-        layer.selection_mask = new_mask
-        layer.selection_changed.emit()
-
         if self._undo_stack and not np.array_equal(old_mask, new_mask):
+            # push() calls redo() which sets mask + emits selection_changed
+            # selection_changed triggers viewport update via main_window signal
+            # So this is the ONLY update needed — no manual emit or update_layer
             cmd = SelectionCommand(layer, old_mask, new_mask)
             self._undo_stack.push(cmd)
+        else:
+            # No undo stack or no change — apply directly, single update
+            layer.selection_mask = new_mask
+            self._viewport.update_layer(layer.uid)
 
-        self._viewport.update_layer(layer.uid)
         self._pending_layer = None
 
     def _on_selection_error(self, error_msg, generation):

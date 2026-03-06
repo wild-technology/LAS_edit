@@ -147,9 +147,9 @@ class SelectionWorker(QRunnable):
             xyz = self._xyz_ref.copy()
             deleted_mask = self._deleted_mask_ref.copy()
             if not np.allclose(self._transform, np.eye(4)):
-                ones = np.ones((len(xyz), 1), dtype=np.float32)
-                xyzw = np.hstack([xyz, ones])
-                xyz = (self._transform @ xyzw.T).T[:, :3].astype(np.float32)
+                R = self._transform[:3, :3]
+                t = self._transform[:3, 3]
+                xyz = (xyz @ R.T + t).astype(np.float32)
 
             if self._mode == "polygon":
                 mask = select_points_in_polygon(

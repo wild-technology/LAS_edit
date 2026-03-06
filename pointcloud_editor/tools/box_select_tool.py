@@ -76,15 +76,26 @@ class BoxSelectTool(BaseTool):
             self._overlay.deleteLater()
             self._overlay = None
 
+    def _mapped_pos(self, event) -> QPoint:
+        """Get mouse position mapped to interactor widget coordinates.
+
+        Uses globalPosition → mapFromGlobal to avoid offset on Windows
+        where VTK's native child HWND may have a different origin.
+        """
+        widget = self._viewport.interactor_widget()
+        if hasattr(event, 'globalPosition'):
+            return widget.mapFromGlobal(event.globalPosition().toPoint())
+        return widget.mapFromGlobal(event.globalPos())
+
     def mouse_press(self, event):
         if event.button() != Qt.LeftButton:
             return
-        self._start = event.pos()
+        self._start = self._mapped_pos(event)
         self._dragging = True
 
     def mouse_move(self, event):
         if self._dragging and self._overlay and self._start:
-            self._overlay.set_rect(self._start, event.pos())
+            self._overlay.set_rect(self._start, self._mapped_pos(event))
             self._overlay.update()
 
     def mouse_release(self, event):
@@ -98,7 +109,7 @@ class BoxSelectTool(BaseTool):
         if not self._start:
             return
 
-        end = event.pos()
+        end = self._mapped_pos(event)
         rect = QRect(self._start, end).normalized()
         if rect.width() < 5 or rect.height() < 5:
             return
@@ -156,14 +167,15 @@ class BoxSelectTool(BaseTool):
         else:
             new_mask = new_selection
 
-        layer.selection_mask = new_mask
-        layer.selection_changed.emit()
-
         if self._undo_stack and not np.array_equal(old_mask, new_mask):
+            # push() calls redo() which sets mask + emits selection_changed
+            # selection_changed triggers viewport update via main_window signal
             cmd = SelectionCommand(layer, old_mask, new_mask)
             self._undo_stack.push(cmd)
+        else:
+            layer.selection_mask = new_mask
+            self._viewport.update_layer(layer.uid)
 
-        self._viewport.update_layer(layer.uid)
         self._pending_layer = None
 
     def _on_selection_error(self, error_msg, generation):
