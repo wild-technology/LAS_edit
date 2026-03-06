@@ -266,9 +266,9 @@ class Viewport(QWidget):
 
         # Use LOD if available
         layer_id = id(layer)
-        if self._decimator.has_lod(layer_id):
+        lod_data = self._decimator._lod_cache.get(layer_id) if self._decimator.has_lod(layer_id) else None
+        if lod_data is not None:
             budget = max(1000, int(len(xyz) * fraction))
-            lod_data = self._decimator._lod_cache[layer_id]
             lod_xyz, lod_rgb, level = lod_data.get_for_budget(budget)
 
             # Apply layer transform to LOD data

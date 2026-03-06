@@ -141,6 +141,12 @@ class ExportDialog(QDialog):
             "apply_transforms": self._transforms_check.isChecked(),
         }
 
+        # Initialize thread-shared state before starting thread
+        self._progress_message = "Exporting..."
+        self._progress_fraction = 0.0
+        self._export_result = 0
+        self._export_error = None
+
         # Progress dialog
         self._progress = QProgressDialog("Exporting...", "Cancel", 0, 100, self)
         self._progress.setWindowModality(Qt.WindowModal)
@@ -180,10 +186,8 @@ class ExportDialog(QDialog):
         self._progress_fraction = fraction
 
     def _check_export(self):
-        if hasattr(self, '_progress_message'):
-            self._progress.setLabelText(self._progress_message)
-        if hasattr(self, '_progress_fraction'):
-            self._progress.setValue(int(self._progress_fraction * 100))
+        self._progress.setLabelText(self._progress_message)
+        self._progress.setValue(int(self._progress_fraction * 100))
 
         if not self._export_thread.is_alive():
             self._poll_timer.stop()

@@ -458,7 +458,7 @@ class MainWindow(QMainWindow):
     def _cancel_selection_edit(self):
         layer = self._get_active_layer()
         if layer:
-            selection_transform.deselect_all(layer)
+            selection_transform.deselect_all(layer, self._undo_stack)
             self._viewport.update_layer(id(layer))
             self._update_status()
 
