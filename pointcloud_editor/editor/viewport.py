@@ -4,7 +4,7 @@ import pyvista as pv
 from pyvistaqt import QtInteractor
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout
-from PySide6.QtCore import Qt, Signal, QPoint
+from PySide6.QtCore import Qt, Signal, QPoint, QEvent
 
 from pointcloud_editor.processing.color_adjust import apply_color_adjustments
 from pointcloud_editor.processing.decimation import ViewportDecimator, LODWorker
@@ -26,6 +26,7 @@ class Viewport(QWidget):
         self._mesh_actors: dict[int, str] = {}  # layer_id -> actor name
         self._decimated_data: dict[int, dict] = {}  # layer_id -> {xyz, rgb, indices}
         self._decimator = ViewportDecimator(get_viewport_point_budget())
+        self._current_tool = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -33,11 +34,44 @@ class Viewport(QWidget):
         self._plotter = QtInteractor(self)
         layout.addWidget(self._plotter.interactor)
 
+        # Install event filter to forward mouse events to active tool
+        self._plotter.interactor.installEventFilter(self)
+
         # Configure
         self._plotter.set_background([35 / 255, 35 / 255, 45 / 255])
         self._plotter.enable_trackball_style()
 
         self._default_interaction = True
+
+    def set_current_tool(self, tool):
+        """Set the active tool for mouse event dispatch."""
+        self._current_tool = tool
+        if tool:
+            self._plotter.interactor.setCursor(tool.cursor)
+        else:
+            self._plotter.interactor.setCursor(Qt.ArrowCursor)
+
+    def eventFilter(self, obj, event):
+        """Forward mouse/key events from the VTK interactor to the active tool."""
+        if self._current_tool and obj is self._plotter.interactor:
+            etype = event.type()
+            if etype == QEvent.MouseButtonPress:
+                self._current_tool.mouse_press(event)
+                if self._current_tool.handles_mouse:
+                    return True
+            elif etype == QEvent.MouseMove:
+                self._current_tool.mouse_move(event)
+                if self._current_tool.handles_mouse:
+                    return True
+            elif etype == QEvent.MouseButtonRelease:
+                self._current_tool.mouse_release(event)
+                if self._current_tool.handles_mouse:
+                    return True
+            elif etype == QEvent.KeyPress:
+                self._current_tool.key_press(event)
+            elif etype == QEvent.KeyRelease:
+                self._current_tool.key_release(event)
+        return super().eventFilter(obj, event)
 
     @property
     def active_layer(self):

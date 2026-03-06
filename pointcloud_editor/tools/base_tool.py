@@ -42,6 +42,11 @@ class BaseTool(ABC):
         pass
 
     @property
+    def handles_mouse(self) -> bool:
+        """Return True if this tool consumes mouse events (blocks VTK interaction)."""
+        return True
+
+    @property
     def cursor(self) -> Qt.CursorShape:
         return Qt.ArrowCursor
 

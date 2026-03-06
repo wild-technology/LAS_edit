@@ -24,5 +24,9 @@ class NavigateTool(BaseTool):
         pass
 
     @property
+    def handles_mouse(self) -> bool:
+        return False  # Let VTK handle orbit/pan/zoom
+
+    @property
     def cursor(self) -> Qt.CursorShape:
         return Qt.OpenHandCursor

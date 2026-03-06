@@ -242,6 +242,7 @@ class MainWindow(QMainWindow):
         self._current_tool = self._tools.get(name)
         if self._current_tool:
             self._current_tool.activate()
+        self._viewport.set_current_tool(self._current_tool)
         self._toolbar.set_active_tool(name)
 
     def _toggle_navigate(self):
