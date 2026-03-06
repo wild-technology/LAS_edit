@@ -161,12 +161,14 @@ def write_combined_las(
 
 
 def validate_export(output_path: Path, expected_count: int) -> bool:
-    """Quick validation of exported file."""
+    """Validate exported file: point count and RGB field presence."""
     import laspy
 
     try:
         las = laspy.read(str(output_path))
         if len(las.points) != expected_count:
+            return False
+        if not hasattr(las, 'red') or not hasattr(las, 'green') or not hasattr(las, 'blue'):
             return False
         return True
     except Exception:

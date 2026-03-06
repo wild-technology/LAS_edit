@@ -5,8 +5,10 @@ from PySide6.QtCore import QTimer
 
 def _format_count(n: int) -> str:
     if n >= 1_000_000:
-        return f"{n:,}"
-    return f"{n:,}"
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K"
+    return str(n)
 
 
 class EditorStatusBar(QStatusBar):
@@ -69,4 +71,4 @@ class EditorStatusBar(QStatusBar):
             mem_gb = process.memory_info().rss / (1024 ** 3)
             self._memory_label.setText(f"Memory: {mem_gb:.1f} GB")
         except ImportError:
-            pass
+            self._mem_timer.stop()

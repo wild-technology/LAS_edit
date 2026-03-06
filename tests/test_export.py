@@ -143,6 +143,18 @@ class TestExportCombined:
         np.testing.assert_array_equal(original_rgb, reloaded_rgb)
 
 
+class TestValidateExport:
+    def test_validate_checks_rgb(self, sample_las_path):
+        """validate_export should verify RGB fields exist."""
+        assert validate_export(sample_las_path, 1000) is True
+
+    def test_validate_wrong_count(self, sample_las_path):
+        assert validate_export(sample_las_path, 999) is False
+
+    def test_validate_nonexistent_file(self, tmp_path):
+        assert validate_export(tmp_path / "nonexistent.las", 0) is False
+
+
 class TestWriteCombinedLas:
     def test_write_las(self, tmp_path):
         xyz = np.random.randn(100, 3).astype(np.float32)
