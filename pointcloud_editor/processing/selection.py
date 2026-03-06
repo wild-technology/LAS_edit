@@ -1,5 +1,6 @@
 """2D lasso / box → 3D point filtering logic."""
 import numpy as np
+from PySide6.QtCore import QObject, Signal, QRunnable
 
 from pointcloud_editor.las_color_adjust.logging_setup import setup_logger
 
@@ -109,3 +110,44 @@ def select_points_in_rect(
         mask[start:end] = inside
 
     return mask
+
+
+class SelectionWorker(QRunnable):
+    """Background worker for point selection computation."""
+
+    class Signals(QObject):
+        finished = Signal(np.ndarray)  # bool mask
+        error = Signal(str)
+
+    def __init__(self, xyz, region, mvp, viewport_size, mode="polygon"):
+        """
+        Args:
+            xyz: float32 (N, 3) world-space points (copy)
+            region: polygon list or rect tuple
+            mvp: (4, 4) matrix
+            viewport_size: (width, height)
+            mode: "polygon" or "rect"
+        """
+        super().__init__()
+        self.signals = self.Signals()
+        self._xyz = xyz
+        self._region = region
+        self._mvp = mvp
+        self._viewport_size = viewport_size
+        self._mode = mode
+        self.setAutoDelete(True)
+
+    def run(self):
+        try:
+            if self._mode == "polygon":
+                mask = select_points_in_polygon(
+                    self._xyz, self._region, self._mvp, self._viewport_size,
+                )
+            else:
+                mask = select_points_in_rect(
+                    self._xyz, self._region, self._mvp, self._viewport_size,
+                )
+            self.signals.finished.emit(mask)
+        except Exception as e:
+            logger.error(f"Selection computation failed: {e}")
+            self.signals.error.emit(str(e))

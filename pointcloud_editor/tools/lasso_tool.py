@@ -1,12 +1,12 @@
 """Freehand lasso selection tool."""
 import numpy as np
-from PySide6.QtCore import Qt, QPoint
+from PySide6.QtCore import Qt, QPoint, QThreadPool
 from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen
 from PySide6.QtWidgets import QWidget, QApplication
 
 from pointcloud_editor.tools.base_tool import BaseTool
 from pointcloud_editor.core.undo_stack import SelectionCommand
-from pointcloud_editor.processing.selection import select_points_in_polygon
+from pointcloud_editor.processing.selection import SelectionWorker
 
 
 class LassoOverlay(QWidget):
@@ -102,7 +102,7 @@ class LassoTool(BaseTool):
         self._select_points_in_lasso(polygon, event)
 
     def _select_points_in_lasso(self, polygon, event):
-        """Perform the selection on full-resolution data."""
+        """Perform the selection on full-resolution data in a background thread."""
         layer = self._get_active_layer()
         if not layer:
             return
@@ -113,32 +113,51 @@ class LassoTool(BaseTool):
             return
 
         xyz = layer.get_transformed_xyz()
+        modifiers = event.modifiers() if hasattr(event, 'modifiers') else Qt.NoModifier
+
+        # Capture state for the callback
+        self._pending_layer = layer
+        self._pending_old_mask = layer.selection_mask.copy()
+        self._pending_modifiers = modifiers
 
         QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            new_selection = select_points_in_polygon(xyz, polygon, mvp, size)
 
-            # Apply modifiers
-            modifiers = event.modifiers() if hasattr(event, 'modifiers') else Qt.NoModifier
-            old_mask = layer.selection_mask.copy()
+        worker = SelectionWorker(xyz, polygon, mvp, size, mode="polygon")
+        worker.signals.finished.connect(self._on_selection_finished)
+        worker.signals.error.connect(self._on_selection_error)
+        QThreadPool.globalInstance().start(worker)
 
-            if modifiers & Qt.ShiftModifier:
-                new_mask = old_mask | new_selection
-            elif modifiers & Qt.ControlModifier:
-                new_mask = old_mask & ~new_selection
-            else:
-                new_mask = new_selection
+    def _on_selection_finished(self, new_selection):
+        """Apply selection result from background worker."""
+        QApplication.restoreOverrideCursor()
+        layer = self._pending_layer
+        if not layer:
+            return
 
-            layer.selection_mask = new_mask
-            layer.selection_changed.emit()
+        old_mask = self._pending_old_mask
+        modifiers = self._pending_modifiers
 
-            if self._undo_stack and not np.array_equal(old_mask, new_mask):
-                cmd = SelectionCommand(layer, old_mask, new_mask)
-                self._undo_stack.push(cmd)
+        if modifiers & Qt.ShiftModifier:
+            new_mask = old_mask | new_selection
+        elif modifiers & Qt.ControlModifier:
+            new_mask = old_mask & ~new_selection
+        else:
+            new_mask = new_selection
 
-            self._viewport.update_layer(layer.uid)
-        finally:
-            QApplication.restoreOverrideCursor()
+        layer.selection_mask = new_mask
+        layer.selection_changed.emit()
+
+        if self._undo_stack and not np.array_equal(old_mask, new_mask):
+            cmd = SelectionCommand(layer, old_mask, new_mask)
+            self._undo_stack.push(cmd)
+
+        self._viewport.update_layer(layer.uid)
+        self._pending_layer = None
+
+    def _on_selection_error(self, error_msg):
+        """Handle selection computation error."""
+        QApplication.restoreOverrideCursor()
+        self._pending_layer = None
 
     @property
     def cursor(self) -> Qt.CursorShape:
