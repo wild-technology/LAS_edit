@@ -119,10 +119,12 @@ class SelectionWorker(QRunnable):
         finished = Signal(np.ndarray)  # bool mask
         error = Signal(str)
 
-    def __init__(self, xyz, region, mvp, viewport_size, mode="polygon"):
+    def __init__(self, xyz_ref, transform, deleted_mask_ref, region, mvp, viewport_size, mode="polygon"):
         """
         Args:
-            xyz: float32 (N, 3) world-space points (copy)
+            xyz_ref: float32 (N, 3) raw point array — referenced, not copied
+            transform: float64 (4, 4) layer transform matrix (small, safe to hold)
+            deleted_mask_ref: bool (N,) deleted mask — referenced, not copied
             region: polygon list or rect tuple
             mvp: (4, 4) matrix
             viewport_size: (width, height)
@@ -130,7 +132,9 @@ class SelectionWorker(QRunnable):
         """
         super().__init__()
         self.signals = self.Signals()
-        self._xyz = xyz
+        self._xyz_ref = xyz_ref
+        self._transform = transform
+        self._deleted_mask_ref = deleted_mask_ref
         self._region = region
         self._mvp = mvp
         self._viewport_size = viewport_size
@@ -139,14 +143,27 @@ class SelectionWorker(QRunnable):
 
     def run(self):
         try:
+            # Copy on worker thread to avoid data races with main thread undo/redo
+            xyz = self._xyz_ref.copy()
+            deleted_mask = self._deleted_mask_ref.copy()
+            if not np.allclose(self._transform, np.eye(4)):
+                ones = np.ones((len(xyz), 1), dtype=np.float32)
+                xyzw = np.hstack([xyz, ones])
+                xyz = (self._transform @ xyzw.T).T[:, :3].astype(np.float32)
+
             if self._mode == "polygon":
                 mask = select_points_in_polygon(
-                    self._xyz, self._region, self._mvp, self._viewport_size,
+                    xyz, self._region, self._mvp, self._viewport_size,
                 )
             else:
                 mask = select_points_in_rect(
-                    self._xyz, self._region, self._mvp, self._viewport_size,
+                    xyz, self._region, self._mvp, self._viewport_size,
                 )
+
+            # Exclude deleted points from selection
+            if len(deleted_mask) == len(mask) and deleted_mask.any():
+                mask &= ~deleted_mask
+
             self.signals.finished.emit(mask)
         except Exception as e:
             logger.error(f"Selection computation failed: {e}")

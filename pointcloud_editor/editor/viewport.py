@@ -199,7 +199,8 @@ class Viewport(QWidget):
         try:
             renderer = self._plotter.renderer
             camera = renderer.GetActiveCamera()
-            w, h = self._plotter.window_size
+            widget = self._plotter.interactor
+            w, h = widget.width(), widget.height()
             aspect = w / max(h, 1)
             vtk_matrix = camera.GetCompositeProjectionTransformMatrix(aspect, -1, 1)
             mvp = np.zeros((4, 4), dtype=np.float64)
@@ -214,7 +215,8 @@ class Viewport(QWidget):
     def get_viewport_size(self) -> tuple[int, int] | None:
         """Return (width, height) of the viewport."""
         try:
-            return tuple(self._plotter.window_size)
+            widget = self._plotter.interactor
+            return (widget.width(), widget.height())
         except Exception as e:
             logger.debug(f"Could not get viewport size: {e}")
             return None
@@ -232,7 +234,8 @@ class Viewport(QWidget):
             cam_dir = cam_dir / np.linalg.norm(cam_dir)
 
             # Get world coordinate at the focal plane
-            w, h = self._plotter.window_size
+            widget = self._plotter.interactor
+            w, h = widget.width(), widget.height()
             x = screen_pos.x()
             y = screen_pos.y()
 

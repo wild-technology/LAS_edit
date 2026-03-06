@@ -353,6 +353,8 @@ class MainWindow(QMainWindow):
     # ---- Layer Operations ----
 
     def _on_layer_added(self, index: int):
+        if 0 <= index < len(self._project.layers):
+            self._connect_layer_signals(self._project.layers[index])
         self._update_status()
 
     def _on_layer_removed(self, index: int):
@@ -364,6 +366,8 @@ class MainWindow(QMainWindow):
     def _on_project_loaded(self):
         self._viewport.refresh_all()
         self._layer_panel._rebuild_list()
+        for layer in self._project.layers:
+            self._connect_layer_signals(layer)
 
         # Restore camera
         cam_state = self._project.viewport_state
@@ -498,6 +502,15 @@ class MainWindow(QMainWindow):
         self._viewport.fit_all()
 
     # ---- Helpers ----
+
+    def _connect_layer_signals(self, layer):
+        """Connect layer data/selection signals to viewport refresh."""
+        layer.data_changed.connect(
+            lambda lid=layer.uid: self._viewport.update_layer(lid)
+        )
+        layer.selection_changed.connect(
+            lambda lid=layer.uid: self._viewport.update_layer(lid)
+        )
 
     def _get_active_layer(self):
         if 0 <= self._active_layer_index < len(self._project.layers):

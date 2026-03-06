@@ -1,6 +1,6 @@
 """Freehand lasso selection tool."""
 import numpy as np
-from PySide6.QtCore import Qt, QPoint, QThreadPool
+from PySide6.QtCore import Qt, QPoint, QThreadPool, QEvent
 from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen
 from PySide6.QtWidgets import QWidget, QApplication
 
@@ -14,9 +14,10 @@ class LassoOverlay(QWidget):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self._polygon: list[QPoint] = []
+        parent.installEventFilter(self)
 
     def set_polygon(self, points: list[QPoint]):
         self._polygon = points
@@ -42,6 +43,11 @@ class LassoOverlay(QWidget):
         painter.drawPath(path)
         painter.end()
 
+    def eventFilter(self, obj, event):
+        if obj is self.parent() and event.type() == QEvent.Resize:
+            self.setGeometry(self.parent().rect())
+        return super().eventFilter(obj, event)
+
     def resizeEvent(self, event):
         self.setGeometry(self.parent().rect())
 
@@ -54,6 +60,8 @@ class LassoTool(BaseTool):
         self._lasso_points: list[QPoint] = []
         self._overlay: LassoOverlay | None = None
         self._drawing = False
+        self._selection_gen = 0
+        self._wait_cursor_active = False
 
     def activate(self):
         super().activate()
@@ -64,6 +72,9 @@ class LassoTool(BaseTool):
 
     def deactivate(self):
         super().deactivate()
+        if self._wait_cursor_active:
+            QApplication.restoreOverrideCursor()
+            self._wait_cursor_active = False
         if self._overlay:
             self._overlay.hide()
             self._overlay.deleteLater()
@@ -112,7 +123,6 @@ class LassoTool(BaseTool):
         if mvp is None or size is None:
             return
 
-        xyz = layer.get_transformed_xyz()
         modifiers = event.modifiers() if hasattr(event, 'modifiers') else Qt.NoModifier
 
         # Capture state for the callback
@@ -121,15 +131,23 @@ class LassoTool(BaseTool):
         self._pending_modifiers = modifiers
 
         QApplication.setOverrideCursor(Qt.WaitCursor)
+        self._wait_cursor_active = True
 
-        worker = SelectionWorker(xyz, polygon, mvp, size, mode="polygon")
-        worker.signals.finished.connect(self._on_selection_finished)
-        worker.signals.error.connect(self._on_selection_error)
+        self._selection_gen += 1
+        gen = self._selection_gen
+
+        worker = SelectionWorker(layer.xyz, layer.transform, layer.deleted_mask, polygon, mvp, size, mode="polygon")
+        worker.signals.finished.connect(lambda mask, g=gen: self._on_selection_finished(mask, g))
+        worker.signals.error.connect(lambda msg, g=gen: self._on_selection_error(msg, g))
         QThreadPool.globalInstance().start(worker)
 
-    def _on_selection_finished(self, new_selection):
+    def _on_selection_finished(self, new_selection, generation):
         """Apply selection result from background worker."""
-        QApplication.restoreOverrideCursor()
+        if generation != self._selection_gen:
+            return
+        if self._wait_cursor_active:
+            QApplication.restoreOverrideCursor()
+            self._wait_cursor_active = False
         layer = self._pending_layer
         if not layer:
             return
@@ -154,9 +172,13 @@ class LassoTool(BaseTool):
         self._viewport.update_layer(layer.uid)
         self._pending_layer = None
 
-    def _on_selection_error(self, error_msg):
+    def _on_selection_error(self, error_msg, generation):
         """Handle selection computation error."""
-        QApplication.restoreOverrideCursor()
+        if generation != self._selection_gen:
+            return
+        if self._wait_cursor_active:
+            QApplication.restoreOverrideCursor()
+            self._wait_cursor_active = False
         self._pending_layer = None
 
     @property
