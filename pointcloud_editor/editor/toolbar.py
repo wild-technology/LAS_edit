@@ -1,6 +1,6 @@
 """Main toolbar for tool selection."""
-from PySide6.QtWidgets import QToolBar, QActionGroup
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import QToolBar
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtCore import Signal
 
 

@@ -49,8 +49,8 @@ class TestViewportDecimator:
 
         decimator = ViewportDecimator(point_budget=500)
         data = decimator.get_viewport_data([layer])
-        assert id(layer) in data
-        xyz, rgb = data[id(layer)]
+        assert layer.uid in data
+        xyz, rgb = data[layer.uid]
         assert len(xyz) <= 500 or len(xyz) == layer.point_count
 
     def test_empty_layers(self):

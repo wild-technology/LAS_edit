@@ -22,14 +22,10 @@ def adjust_rgb_grading(
     # Temperature adjustment (shift warm/cool)
     if temperature != 0.0:
         t = temperature / 100.0
-        if t > 0:
-            # Warm: increase red, decrease blue
-            result[:, 0] += t * 40.0
-            result[:, 2] -= t * 40.0
-        else:
-            # Cool: increase blue, decrease red
-            result[:, 0] += t * 40.0
-            result[:, 2] -= t * 40.0
+        # Warm (t>0): increase red, decrease blue
+        # Cool (t<0): decrease red, increase blue (sign of t handles direction)
+        result[:, 0] += t * 40.0
+        result[:, 2] -= t * 40.0
 
     # Saturation adjustment using ITU-R BT.709 luminance
     if saturation != 1.0:

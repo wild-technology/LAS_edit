@@ -77,11 +77,11 @@ class RotateTool(BaseTool):
             centered = self._original_positions - self._pivot
             rotated = (R[:3, :3] @ centered.T).T + self._pivot
             layer.xyz[layer.selection_mask] = rotated.astype(np.float32)
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
         else:
             R = build_rotation_matrix(angle_x, angle_y, angle_z, self._pivot)
             layer.transform = R @ self._original_transform
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
 
     def mouse_release(self, event):
         if not self._dragging:

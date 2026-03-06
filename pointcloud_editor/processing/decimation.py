@@ -28,7 +28,7 @@ class ViewportDecimator:
 
     def build_lod(self, layer) -> OctreeLOD:
         """Build LOD pyramid for a layer. Checks disk cache first."""
-        layer_id = id(layer)
+        layer_id = layer.uid
 
         # Check disk cache
         if layer.source_path:
@@ -63,12 +63,12 @@ class ViewportDecimator:
 
         counts = {}
         for layer in visible_layers:
-            counts[id(layer)] = layer.get_active_point_count()
+            counts[layer.uid] = layer.get_active_point_count()
         total = sum(counts.values())
 
         result = {}
         for layer in visible_layers:
-            layer_id = id(layer)
+            layer_id = layer.uid
             layer_budget = int(
                 self._point_budget * counts[layer_id] / max(total, 1)
             )
@@ -111,7 +111,7 @@ class LODWorker(QRunnable):
         super().__init__()
         self.signals = self.Signals()
         self._layer = layer
-        self._layer_id = id(layer)
+        self._layer_id = layer.uid
         self._decimator = decimator
         self.setAutoDelete(True)
 

@@ -126,7 +126,7 @@ class BoxSelectTool(BaseTool):
                 cmd = SelectionCommand(layer, old_mask, new_mask)
                 self._undo_stack.push(cmd)
 
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
         finally:
             QApplication.restoreOverrideCursor()
 

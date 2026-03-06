@@ -61,12 +61,12 @@ class MoveTool(BaseTool):
 
         if self._selection_mode:
             layer.xyz[layer.selection_mask] = self._original_positions + delta.astype(np.float32)
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
         else:
             new_transform = self._original_transform.copy()
             new_transform[:3, 3] += delta
             layer.transform = new_transform
-            self._viewport.update_layer(id(layer))
+            self._viewport.update_layer(layer.uid)
 
     def mouse_release(self, event):
         if not self._dragging:

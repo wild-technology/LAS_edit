@@ -15,16 +15,38 @@ class OctreeLOD:
         self._levels: list[tuple[np.ndarray, np.ndarray]] = []
         self._build_levels(xyz, rgb, max_depth)
 
+    # Cap for Open3D input — pre-subsample larger clouds for speed
+    _O3D_INPUT_CAP = 20_000_000
+
     def _build_levels(self, xyz: np.ndarray, rgb: np.ndarray, max_depth: int):
-        """Build LOD pyramid using progressively larger voxel sizes."""
-        self._levels = [(xyz.copy(), rgb.copy())]
+        """Build LOD pyramid using progressively larger voxel sizes.
+
+        For large clouds (>20M pts), we pre-subsample before feeding to Open3D
+        to avoid the expensive float64 conversion of the full dataset.
+        Level 0 is always a random subsample capped at _O3D_INPUT_CAP.
+        """
+        n = len(xyz)
+
+        # Pre-subsample if cloud is very large
+        if n > self._O3D_INPUT_CAP:
+            rng = np.random.default_rng(seed=42)
+            idx = rng.choice(n, size=self._O3D_INPUT_CAP, replace=False)
+            idx.sort()
+            work_xyz = xyz[idx]
+            work_rgb = rgb[idx]
+            logger.info(f"Pre-subsampled {n:,} → {self._O3D_INPUT_CAP:,} pts for LOD build")
+        else:
+            work_xyz = xyz
+            work_rgb = rgb
+
+        self._levels = [(work_xyz.copy(), work_rgb.copy())]
 
         try:
             import open3d as o3d
 
             pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
-            pcd.colors = o3d.utility.Vector3dVector(rgb.astype(np.float64) / 255.0)
+            pcd.points = o3d.utility.Vector3dVector(work_xyz.astype(np.float64))
+            pcd.colors = o3d.utility.Vector3dVector(work_rgb.astype(np.float64) / 255.0)
 
             bbox = pcd.get_axis_aligned_bounding_box()
             diag = np.linalg.norm(
@@ -42,7 +64,7 @@ class OctreeLOD:
 
         except ImportError:
             logger.warning("Open3D not available, using random subsampling for LOD")
-            self._build_random_levels(xyz, rgb, max_depth)
+            self._build_random_levels(work_xyz, work_rgb, max_depth)
 
     def _build_random_levels(self, xyz: np.ndarray, rgb: np.ndarray, max_depth: int):
         """Fallback LOD using random subsampling."""

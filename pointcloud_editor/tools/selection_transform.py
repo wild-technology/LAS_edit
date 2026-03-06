@@ -72,5 +72,5 @@ def apply_selection_edit(layer, viewport):
 
     layer.selection_mask[:] = False
     layer.selection_changed.emit()
-    viewport.update_layer(id(layer))
+    viewport.update_layer(layer.uid)
     logger.info(f"Applied edit to {len(indices):,} points in {layer.name}")
