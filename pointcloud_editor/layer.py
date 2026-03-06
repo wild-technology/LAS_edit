@@ -90,13 +90,15 @@ class PointCloudLayer(QObject):
         return int(self.point_count - self.deleted_mask.sum())
 
     def get_transformed_xyz(self) -> np.ndarray:
-        """Return xyz with layer transform applied."""
+        """Return xyz with layer transform applied.
+
+        Uses R@x+t instead of homogeneous expansion to halve peak memory.
+        """
         if np.allclose(self.transform, np.eye(4)):
             return self.xyz.copy()
-        ones = np.ones((len(self.xyz), 1), dtype=np.float32)
-        xyzw = np.hstack([self.xyz, ones])
-        transformed = (self.transform @ xyzw.T).T[:, :3]
-        return transformed.astype(np.float32)
+        R = self.transform[:3, :3]
+        t = self.transform[:3, 3]
+        return (self.xyz @ R.T + t).astype(np.float32)
 
     def to_dict(self, base_dir: Path | None = None) -> dict:
         """Serialize to JSON-compatible dict."""

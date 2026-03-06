@@ -109,9 +109,12 @@ class Project(QObject):
             "viewport": self.viewport_state,
         }
 
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.file_path, "w") as f:
-            json.dump(manifest, f, indent=2, default=self._json_default)
+        try:
+            self.file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.file_path, "w") as f:
+                json.dump(manifest, f, indent=2, default=self._json_default)
+        except OSError as e:
+            raise ValueError(f"Failed to save project: {e}") from e
 
         self.modified = False
         self.project_saved.emit()
@@ -120,8 +123,13 @@ class Project(QObject):
     def load(self, path: Path):
         """Read JSON manifest and reload all layers."""
         path = Path(path).resolve()
-        with open(path) as f:
-            manifest = json.load(f)
+        try:
+            with open(path) as f:
+                manifest = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Corrupted project file: {e}") from e
+        except OSError as e:
+            raise ValueError(f"Cannot read project file: {e}") from e
 
         self.file_path = path
         base_dir = path.parent

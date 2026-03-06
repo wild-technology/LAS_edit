@@ -120,6 +120,9 @@ class PropertiesPanel(QDockWidget):
 
     def set_layer(self, layer):
         """Set the active layer and update all controls."""
+        if self._layer is layer:
+            self._update_from_layer()
+            return
         self._layer = layer
         self._update_from_layer()
 

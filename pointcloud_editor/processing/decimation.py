@@ -117,7 +117,11 @@ class LODWorker(QRunnable):
 
     def run(self):
         try:
-            self._decimator.build_lod(self._layer)
+            layer = self._layer
+            if layer is None or not hasattr(layer, 'xyz') or len(layer.xyz) == 0:
+                logger.warning(f"LOD build skipped: layer {self._layer_id} no longer valid")
+                return
+            self._decimator.build_lod(layer)
             self.signals.finished.emit(self._layer_id)
         except Exception as e:
             logger.error(f"LOD build failed: {e}")

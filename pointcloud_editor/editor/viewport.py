@@ -122,6 +122,9 @@ class Viewport(QWidget):
         from PySide6.QtCore import QThreadPool
         worker = LODWorker(layer, self._decimator)
         worker.signals.finished.connect(lambda lid: self._on_lod_ready(lid))
+        worker.signals.error.connect(
+            lambda lid, msg: logger.error(f"LOD build failed for layer {lid}: {msg}")
+        )
         QThreadPool.globalInstance().start(worker)
 
     def remove_layer(self, layer_id: int):
@@ -266,11 +269,15 @@ class Viewport(QWidget):
     def set_camera_state(self, state: dict):
         """Restore camera state from project load."""
         try:
-            if "position" in state:
+            def _valid_vec(v):
+                return (isinstance(v, (list, tuple)) and len(v) == 3
+                        and all(np.isfinite(x) for x in v))
+
+            if "position" in state and _valid_vec(state["position"]):
                 self._plotter.camera.position = state["position"]
-            if "focal_point" in state:
+            if "focal_point" in state and _valid_vec(state["focal_point"]):
                 self._plotter.camera.focal_point = state["focal_point"]
-            if "up" in state:
+            if "up" in state and _valid_vec(state["up"]):
                 self._plotter.camera.up = state["up"]
             self._plotter.render()
         except Exception as e:
@@ -291,41 +298,43 @@ class Viewport(QWidget):
         logger.debug(f"LOD ready for layer {layer_id}")
 
     def _build_mesh(self, layer, fraction: float) -> pv.PolyData:
-        """Build PolyData mesh for a layer."""
-        xyz = layer.get_transformed_xyz()
-        rgb = layer.rgb.copy()
+        """Build PolyData mesh for a layer.
 
-        # Apply deleted mask
-        if len(layer.deleted_mask) > 0 and layer.deleted_mask.any():
-            mask = ~layer.deleted_mask
-            xyz = xyz[mask]
-            rgb = rgb[mask]
-
-        # Use LOD if available
+        Uses LOD data when available to avoid allocating the full point array.
+        """
         layer_id = layer.uid
         lod_data = self._decimator._lod_cache.get(layer_id) if self._decimator.has_lod(layer_id) else None
+
         if lod_data is not None:
-            budget = max(1000, int(len(xyz) * fraction))
-            lod_xyz, lod_rgb, level = lod_data.get_for_budget(budget)
-
-            # Apply layer transform to LOD data
+            # LOD path — use pre-decimated data, never touch the full array
+            budget = max(1000, int(layer.get_active_point_count() * fraction))
+            xyz, rgb, level = lod_data.get_for_budget(budget)
+            xyz = xyz.copy()
+            rgb = rgb.copy()
+            # Apply layer transform to small LOD array only
             if not np.allclose(layer.transform, np.eye(4)):
-                ones = np.ones((len(lod_xyz), 1), dtype=np.float32)
-                xyzw = np.hstack([lod_xyz, ones])
-                lod_xyz = (layer.transform @ xyzw.T).T[:, :3].astype(np.float32)
-
-            xyz = lod_xyz
-            rgb = lod_rgb
+                R = layer.transform[:3, :3]
+                t = layer.transform[:3, 3]
+                xyz = (xyz @ R.T + t).astype(np.float32)
             indices = None
-        elif fraction < 1.0:
-            n = max(1000, int(len(xyz) * fraction))
-            rng = np.random.default_rng(seed=42)
-            indices = rng.choice(len(xyz), size=min(n, len(xyz)), replace=False)
-            indices.sort()
-            xyz = xyz[indices]
-            rgb = rgb[indices]
         else:
-            indices = None
+            # No LOD — use full data with optional subsampling
+            xyz = layer.get_transformed_xyz()
+            rgb = layer.rgb.copy()
+            # Apply deleted mask
+            if len(layer.deleted_mask) > 0 and layer.deleted_mask.any():
+                mask = ~layer.deleted_mask
+                xyz = xyz[mask]
+                rgb = rgb[mask]
+            if fraction < 1.0:
+                n = max(1000, int(len(xyz) * fraction))
+                rng = np.random.default_rng(seed=42)
+                indices = rng.choice(len(xyz), size=min(n, len(xyz)), replace=False)
+                indices.sort()
+                xyz = xyz[indices]
+                rgb = rgb[indices]
+            else:
+                indices = None
 
         # Apply color adjustments
         rgb_original = rgb.copy()
@@ -334,7 +343,7 @@ class Viewport(QWidget):
             rgb = apply_color_adjustments(rgb, layer.color_adjustments)
 
         # Apply selection highlight
-        if layer.selection_mask.any():
+        if len(layer.selection_mask) > 0 and layer.selection_mask.any():
             rgb = self._apply_selection_highlight(rgb, layer.selection_mask, indices)
 
         # Store decimated data for later color updates

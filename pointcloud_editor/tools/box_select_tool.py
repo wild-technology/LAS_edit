@@ -55,6 +55,9 @@ class BoxSelectTool(BaseTool):
         self._dragging = False
         self._selection_gen = 0
         self._wait_cursor_active = False
+        self._pending_layer = None
+        self._pending_old_mask = None
+        self._pending_modifiers = Qt.NoModifier
 
     def activate(self):
         super().activate()

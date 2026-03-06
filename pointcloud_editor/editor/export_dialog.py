@@ -206,3 +206,12 @@ class ExportDialog(QDialog):
                 self.accept()
             else:
                 QMessageBox.warning(self, "Export", "Export was cancelled.")
+
+    def closeEvent(self, event):
+        """Ensure export thread is joined before closing."""
+        if hasattr(self, '_export_thread') and self._export_thread.is_alive():
+            self._cancel_event.set()
+            self._export_thread.join(timeout=5.0)
+        if hasattr(self, '_poll_timer'):
+            self._poll_timer.stop()
+        event.accept()

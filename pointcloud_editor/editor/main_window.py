@@ -51,6 +51,7 @@ class MainWindow(QMainWindow):
         self._active_layer_index = -1
         self._current_tool = None
         self._color_before_drag = None
+        self._layer_signal_connections: dict[int, list] = {}  # layer_uid -> connections
 
         # --- Widgets ---
         self._viewport = Viewport(self._project, self)
@@ -259,7 +260,14 @@ class MainWindow(QMainWindow):
         if self._project.modified:
             if not self._confirm_discard():
                 return
+        # Disconnect old layer signals
+        for uid in list(self._layer_signal_connections.keys()):
+            self._disconnect_layer_signals(uid)
         self._project = Project()
+        self._project.layer_added.connect(self._on_layer_added)
+        self._project.layer_removed.connect(self._on_layer_removed)
+        self._project.project_loaded.connect(self._on_project_loaded)
+        self._project.modified_changed.connect(self._update_title)
         self._undo_stack.clear()
         self._viewport._project = self._project
         self._viewport.refresh_all()
@@ -358,8 +366,23 @@ class MainWindow(QMainWindow):
         self._update_status()
 
     def _on_layer_removed(self, index: int):
-        layer_id = None
-        # Remove from viewport (we need the id before removal, but layer is already gone)
+        # Disconnect signals for removed layers (clean up orphans)
+        active_uids = {l.uid for l in self._project.layers}
+        for uid in list(self._layer_signal_connections.keys()):
+            if uid not in active_uids:
+                self._disconnect_layer_signals(uid)
+
+        # Reset active index if it's now invalid
+        if self._active_layer_index >= len(self._project.layers):
+            self._active_layer_index = len(self._project.layers) - 1
+        if self._active_layer_index >= 0:
+            layer = self._project.layers[self._active_layer_index]
+            self._viewport.active_layer = layer
+            self._properties_panel.set_layer(layer)
+        else:
+            self._viewport.active_layer = None
+            self._properties_panel.set_layer(None)
+
         self._viewport.refresh_all()
         self._update_status()
 
@@ -505,12 +528,30 @@ class MainWindow(QMainWindow):
 
     def _connect_layer_signals(self, layer):
         """Connect layer data/selection signals to viewport refresh."""
-        layer.data_changed.connect(
-            lambda lid=layer.uid: self._viewport.update_layer(lid)
-        )
-        layer.selection_changed.connect(
-            lambda lid=layer.uid: self._viewport.update_layer(lid)
-        )
+        self._disconnect_layer_signals(layer.uid)
+
+        def on_data_changed(lid=layer.uid):
+            self._viewport.update_layer(lid)
+            self._project.modified = True
+
+        def on_selection_changed(lid=layer.uid):
+            self._viewport.update_layer(lid)
+
+        layer.data_changed.connect(on_data_changed)
+        layer.selection_changed.connect(on_selection_changed)
+        self._layer_signal_connections[layer.uid] = [
+            (layer.data_changed, on_data_changed),
+            (layer.selection_changed, on_selection_changed),
+        ]
+
+    def _disconnect_layer_signals(self, layer_uid: int):
+        """Disconnect stored signal connections for a layer."""
+        connections = self._layer_signal_connections.pop(layer_uid, [])
+        for signal, slot in connections:
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
 
     def _get_active_layer(self):
         if 0 <= self._active_layer_index < len(self._project.layers):

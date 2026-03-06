@@ -92,11 +92,16 @@ def process_layer_for_export(
     xyz = layer.xyz.copy()
     rgb = layer.rgb.copy()
 
-    # 1. Apply point edits
+    # 1. Apply point edits (with bounds checking)
     for edit in layer.point_edits:
         if edit.get("type") == "position_override":
             indices = np.array(edit["indices"])
             positions = np.array(edit["positions"], dtype=np.float32)
+            valid = (indices >= 0) & (indices < len(xyz))
+            if not valid.all():
+                logger.warning(f"Skipping {(~valid).sum()} invalid point edit indices")
+                indices = indices[valid]
+                positions = positions[valid]
             xyz[indices] = positions
 
     # 2. Apply deleted mask
@@ -105,12 +110,11 @@ def process_layer_for_export(
         xyz = xyz[mask]
         rgb = rgb[mask]
 
-    # 3. Apply layer transform
+    # 3. Apply layer transform (memory-efficient R@x+t)
     if apply_transforms and not np.allclose(layer.transform, np.eye(4)):
-        ones = np.ones((len(xyz), 1), dtype=np.float32)
-        xyzw = np.hstack([xyz, ones])
-        transformed = (layer.transform @ xyzw.T).T[:, :3]
-        xyz = transformed.astype(np.float32)
+        R = layer.transform[:3, :3]
+        t = layer.transform[:3, 3]
+        xyz = (xyz @ R.T + t).astype(np.float32)
 
     # 4. Apply color adjustments
     if apply_colors and layer.color_adjustments != _DEFAULT_COLOR:

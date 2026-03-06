@@ -21,12 +21,12 @@ def load_las(path: Path) -> tuple[np.ndarray, np.ndarray]:
     logger.info(f"Loading {path.name}...")
     las = laspy.read(str(path))
 
-    # Extract XYZ as float32
-    xyz = np.column_stack([
-        np.array(las.x, dtype=np.float64),
-        np.array(las.y, dtype=np.float64),
-        np.array(las.z, dtype=np.float64),
-    ]).astype(np.float32)
+    # Extract XYZ as float32 directly — avoids 3× float64 intermediaries
+    n = len(las.x)
+    xyz = np.empty((n, 3), dtype=np.float32)
+    xyz[:, 0] = np.asarray(las.x, dtype=np.float32)
+    xyz[:, 1] = np.asarray(las.y, dtype=np.float32)
+    xyz[:, 2] = np.asarray(las.z, dtype=np.float32)
 
     # Extract RGB (LAS stores 16-bit, convert to 8-bit)
     if hasattr(las, 'red') and hasattr(las, 'green') and hasattr(las, 'blue'):
@@ -85,5 +85,8 @@ def write_las(
     las.green = rgb[:, 1].astype(np.uint16) * 257
     las.blue = rgb[:, 2].astype(np.uint16) * 257
 
-    las.write(str(output_path))
+    try:
+        las.write(str(output_path))
+    except OSError as e:
+        raise ValueError(f"Failed to write LAS file: {e}") from e
     logger.info(f"Wrote {len(xyz):,} points to {output_path.name}")
